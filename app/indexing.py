@@ -1,35 +1,43 @@
-import faiss
-import numpy as np
-from typing import List
+"""FAISS index build/load boundary for full and MRL-truncated vectors."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
 from .schemas import Chunk
 
-class VectorStore:
-    def __init__(self, dim: int = 768, mrl_dim: int = 128):
-        # MRL (Matryoshka Representation Learning) setup
-        self.dim = dim
-        self.mrl_dim = mrl_dim
-        
-        # Two indices: one for fast MRL search, one for full dimension reranking
-        self.mrl_index = faiss.IndexFlatIP(mrl_dim)
-        self.full_index = faiss.IndexFlatIP(dim)
-        self.chunks: List[Chunk] = []
 
-    def add_chunks(self, chunks: List[Chunk], embeddings: np.ndarray):
-        """
-        embeddings should be of shape (N, dim)
-        """
-        assert len(chunks) == embeddings.shape[0]
-        
-        # MRL embeddings are typically the first `mrl_dim` dimensions
-        mrl_embeddings = embeddings[:, :self.mrl_dim]
-        
-        # Normalize for Inner Product -> Cosine Similarity
-        faiss.normalize_L2(mrl_embeddings)
-        faiss.normalize_L2(embeddings)
-        
-        self.mrl_index.add(mrl_embeddings)
-        self.full_index.add(embeddings)
-        self.chunks.extend(chunks)
+@dataclass(frozen=True, slots=True)
+class IndexDimensions:
+    full: int
+    mrl: int
 
-# Singleton vector store instance
-vector_store = VectorStore()
+    def __post_init__(self) -> None:
+        if self.full <= 0 or self.mrl <= 0:
+            raise ValueError("Index dimensions must be positive")
+        if self.mrl >= self.full:
+            raise ValueError("MRL dimension must be smaller than full dimension")
+
+
+class FaissVectorStore:
+    """Own paired in-memory FAISS indices and their aligned chunk metadata."""
+
+    def __init__(self, dimensions: IndexDimensions) -> None:
+        self.dimensions = dimensions
+
+    def add(self, chunks: list[Chunk], full_embeddings: object) -> None:
+        """Normalize and add aligned full/MRL vectors to both indices."""
+
+        raise NotImplementedError("FAISS indexing is implemented after chunk profiling")
+
+    def save(self, output_dir: Path) -> None:
+        """Persist both indices, chunks, dimensions, and build provenance."""
+
+        raise NotImplementedError("FAISS persistence is not implemented yet")
+
+    @classmethod
+    def load(cls, input_dir: Path) -> FaissVectorStore:
+        """Load and validate an offline-built index bundle."""
+
+        raise NotImplementedError("FAISS loading is not implemented yet")

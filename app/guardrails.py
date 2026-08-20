@@ -1,30 +1,37 @@
-from typing import List
-from .schemas import Chunk
+"""Fast deterministic relevance and groundedness guardrail boundaries."""
 
-async def check_relevance(query: str, chunks: List[Chunk]) -> List[Chunk]:
-    """
-    CRAG-style Correct/Incorrect/Ambiguous classification.
-    Filters out or flags low-relevance retrievals before calling the LLM.
-    Fast/deterministic method preferred (e.g., cross-encoder or similarity threshold).
-    """
-    relevant_chunks = []
-    # Mock implementation: assume all are relevant for the scaffold
-    for c in chunks:
-        # Placeholder for relevance score calculation
-        score = 0.8
-        if score > 0.5:
-            relevant_chunks.append(c)
-            
-    return relevant_chunks
+from __future__ import annotations
 
-async def check_groundedness(answer: str, context_chunks: List[Chunk]) -> bool:
-    """
-    Lightweight groundedness check.
-    Ensures the answer's content traces back to retrieved context.
-    """
-    # Mock implementation
-    # A real implementation might use an NLI model, or strict keyword overlap.
-    if "cannot answer" in answer.lower() or not context_chunks:
-        return False
-        
-    return True
+from .schemas import (
+    GroundednessAssessment,
+    RelevanceAssessment,
+    RetrievedChunk,
+)
+
+
+class RelevanceGuardrail:
+    """Classify retrieved evidence as correct, incorrect, or ambiguous."""
+
+    async def assess(
+        self,
+        *,
+        query: str,
+        chunks: list[RetrievedChunk],
+    ) -> RelevanceAssessment:
+        raise NotImplementedError(
+            "CRAG-style relevance classification is not implemented"
+        )
+
+
+class GroundednessGuardrail:
+    """Trace answer content to accepted chunks before it can be returned."""
+
+    async def assess(
+        self,
+        *,
+        answer: str,
+        chunks: list[RetrievedChunk],
+    ) -> GroundednessAssessment:
+        raise NotImplementedError(
+            "Deterministic groundedness checking is not implemented"
+        )

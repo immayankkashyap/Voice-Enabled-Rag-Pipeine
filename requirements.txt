@@ -1,15 +1,21 @@
-fastapi
-uvicorn
-pydantic
-tenacity
-websockets
-faiss-cpu
-datasets
-groq
-numpy
-pandas
-matplotlib
-python-dotenv
-httpx
-torch
-sentence-transformers
+# API and validation
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+python-dotenv>=1.0
+httpx>=0.28
+tenacity>=9.0
+websockets>=13.0
+
+# Retrieval and generation
+faiss-cpu>=1.10
+groq>=0.18
+numpy>=2.1
+torch>=2.5
+sentence-transformers>=3.4
+
+# Dataset inspection (scripts/inspect_dataset.py)
+datasets>=3.2
+huggingface-hub>=0.28
+pyarrow>=18.0
+matplotlib>=3.9

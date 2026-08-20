@@ -1,30 +1,64 @@
-from typing import List
+"""Chunking strategy boundaries.
+
+Parameter defaults are deliberately absent.  They will be chosen only after the
+MSMARCO-XI profile is reviewed with the selected embedding tokenizer.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
 from .schemas import Chunk
 
-def naive_chunking(text: str, chunk_size: int = 500, overlap: int = 50) -> List[Chunk]:
-    """
-    Baseline fixed-size/recursive character chunking for comparison.
-    """
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunk_text = text[start:end]
-        chunks.append(Chunk(id=f"naive_{start}", text=chunk_text))
-        start += (chunk_size - overlap)
-    return chunks
 
-def late_chunking(text: str) -> List[Chunk]:
-    """
-    Late Chunking strategy: process larger document contexts and contextualize smaller chunks.
-    This is a stub to be implemented.
-    """
-    # In practice, late chunking involves creating embeddings at a smaller granularity
-    # but pooling/contextualizing them with the document-level embedding or attention.
-    # We'll mock the extraction here.
-    sentences = text.split('.')
-    chunks = []
-    for i, sentence in enumerate(sentences):
-        if sentence.strip():
-            chunks.append(Chunk(id=f"late_{i}", text=sentence.strip() + "."))
-    return chunks
+@dataclass(frozen=True, slots=True)
+class LateChunkingParameters:
+    document_window_tokens: int
+    target_chunk_tokens: int
+    boundary_overlap_tokens: int
+
+    def __post_init__(self) -> None:
+        if self.document_window_tokens <= 0 or self.target_chunk_tokens <= 0:
+            raise ValueError("Token limits must be positive")
+        if not 0 <= self.boundary_overlap_tokens < self.target_chunk_tokens:
+            raise ValueError("Overlap must be non-negative and smaller than a chunk")
+        if self.target_chunk_tokens > self.document_window_tokens:
+            raise ValueError("A target chunk cannot exceed its document window")
+
+
+@dataclass(frozen=True, slots=True)
+class NaiveChunkingParameters:
+    chunk_characters: int
+    overlap_characters: int
+
+    def __post_init__(self) -> None:
+        if self.chunk_characters <= 0:
+            raise ValueError("Chunk size must be positive")
+        if not 0 <= self.overlap_characters < self.chunk_characters:
+            raise ValueError("Overlap must be non-negative and smaller than a chunk")
+
+
+def late_chunking(
+    *,
+    text: str,
+    document_id: str,
+    parameters: LateChunkingParameters,
+) -> list[Chunk]:
+    """Create token-span chunks after document-wide contextual encoding."""
+
+    raise NotImplementedError(
+        "Late Chunking awaits dataset/tokenizer profiling and encoder selection"
+    )
+
+
+def naive_recursive_chunking(
+    *,
+    text: str,
+    document_id: str,
+    parameters: NaiveChunkingParameters,
+) -> list[Chunk]:
+    """Create the explicitly benchmarked recursive-character baseline."""
+
+    raise NotImplementedError(
+        "The naive baseline awaits parameters justified by the dataset profile"
+    )

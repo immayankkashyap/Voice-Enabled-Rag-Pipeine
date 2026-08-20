@@ -1,37 +1,36 @@
-import os
-from groq import AsyncGroq
-from typing import List
-from tenacity import retry, stop_after_attempt, wait_exponential
-from .schemas import Chunk
+"""Structured Groq/Llama answer-generation boundary."""
 
-# Initialize Groq client
-# client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+from __future__ import annotations
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-async def generate_answer(query: str, context_chunks: List[Chunk]) -> str:
-    """
-    Route through Groq (LPU-hosted Llama 3) for near-instant time-to-first-token.
-    """
-    if not context_chunks:
-        return "No relevant context found."
-        
-    context_text = "\n\n".join([f"Context:\n{c.text}" for c in context_chunks])
-    
-    prompt = f"""You are a helpful and concise assistant. Answer the user's question based strictly on the provided context. If the answer cannot be found in the context, explicitly state that you cannot answer it based on the available information. Do not use outside knowledge.
+from dataclasses import dataclass
 
-Context Information:
-{context_text}
+from .schemas import GenerationRequest, GenerationResult
 
-User Query: {query}
-Answer:"""
 
-    # Mock call for now
-    # response = await client.chat.completions.create(
-    #     messages=[{"role": "user", "content": prompt}],
-    #     model="llama3-8b-8192",
-    #     temperature=0.1,
-    #     max_tokens=256
-    # )
-    # return response.choices[0].message.content
-    
-    return f"This is a generated answer based on {len(context_chunks)} retrieved chunks."
+@dataclass(frozen=True, slots=True)
+class GroqGenerationSettings:
+    api_key: str
+    model: str
+    max_output_tokens: int
+
+    def __post_init__(self) -> None:
+        if not self.api_key:
+            raise ValueError("Groq API key cannot be empty")
+        if not self.model:
+            raise ValueError("Groq model cannot be empty")
+        if self.max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be positive")
+
+
+class GroqAnswerGenerator:
+    """Generate only from validated retrieved context and return typed output."""
+
+    def __init__(self, settings: GroqGenerationSettings) -> None:
+        self.settings = settings
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        """Call Groq with retry/timing and validate its structured response."""
+
+        raise NotImplementedError(
+            "The real Groq structured-output client is not implemented"
+        )

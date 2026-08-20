@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pydantic
+tenacity
+websockets
+faiss-cpu
+datasets
+groq
+numpy
+pandas
+matplotlib
+python-dotenv
+httpx
+torch
+sentence-transformers

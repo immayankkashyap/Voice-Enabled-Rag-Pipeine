@@ -74,7 +74,7 @@ class RetrievedChunk(StrictModel):
 class RetrievalRequest(StrictModel):
     query: str = Field(min_length=1, max_length=2_000)
     candidate_k: int = Field(default=50, ge=1, le=1_000)
-    final_k: int = Field(default=5, ge=1, le=100)
+    final_k: int = Field(default=5, ge=1, le=1_000)
 
     @model_validator(mode="after")
     def validate_candidate_counts(self) -> Self:
@@ -124,9 +124,18 @@ class GenerationResult(StrictModel):
 
 
 class TranscriptionResult(StrictModel):
+    provider: str = Field(default="unknown", min_length=1)
+    model: str | None = Field(default=None, min_length=1)
     transcript: str = Field(min_length=1)
     language_code: str = Field(min_length=2, max_length=32)
     is_final: bool
+    partial_transcripts: list[str] = Field(default_factory=list)
+    connection_ms: float = Field(ge=0)
+    time_to_first_partial_ms: float | None = Field(default=None, ge=0)
+    time_to_final_transcript_ms: float = Field(ge=0)
+    final_after_audio_end_ms: float = Field(ge=0)
+    first_audio_to_final_ms: float | None = Field(default=None, ge=0)
+    audio_duration_ms: float | None = Field(default=None, ge=0)
     total_ms: float = Field(ge=0)
 
 
@@ -138,6 +147,8 @@ class StageLatencies(StrictModel):
     groundedness_ms: float | None = Field(default=None, ge=0)
     output_ms: float | None = Field(default=None, ge=0)
     total_ms: float = Field(ge=0)
+    target_ms: float | None = Field(default=None, gt=0)
+    target_met: bool | None = None
 
 
 class RAGRequest(StrictModel):
@@ -178,9 +189,35 @@ class RAGResponse(StrictModel):
         return self
 
 
+class VoicePipelineLatencies(StrictModel):
+    """Voice latency anchors that cannot hide the duration of the utterance."""
+
+    metric_definition: str = Field(min_length=1)
+    first_audio_to_committed_ms: float = Field(ge=0)
+    audio_eof_to_committed_ms: float = Field(ge=0)
+    committed_to_answer_ms: float = Field(ge=0)
+    audio_eof_to_answer_ms: float = Field(ge=0)
+    first_audio_to_answer_ms: float = Field(ge=0)
+    target_ms: float = Field(default=200.0, gt=0)
+    target_met: bool
+
+
+class VoiceRAGResponse(StrictModel):
+    transcription: TranscriptionResult
+    rag: RAGResponse
+    latencies: VoicePipelineLatencies
+
+
 class HealthResponse(StrictModel):
     status: str
     implementation_phase: str
+    rag_ready: bool = False
+    voice_ready: bool = False
+    stt_provider: str = "elevenlabs"
+    answer_mode: str = "local_extractive"
+    vector_count: int = Field(default=0, ge=0)
+    supported_languages: list[str] = Field(default_factory=list)
+    latency_target_ms: float = Field(default=200.0, gt=0)
 
 
 class ErrorResponse(StrictModel):

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Voice RAG Demo</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <p class="eyebrow">HH Goa 2026 · Task 2</p>
+        <h1>Voice RAG</h1>
+        <p class="lede">
+          Explicit push-to-talk transcription with local retrieval and a
+          grounded, extractive answer.
+        </p>
+      </header>
+
+      <section class="panel controls" aria-labelledby="controls-title">
+        <div>
+          <h2 id="controls-title">One voice turn</h2>
+          <p class="hint">Press Start, speak, then press Stop immediately.</p>
+        </div>
+
+        <label for="language">Index language</label>
+        <select id="language">
+          <option value="hi">Hindi</option>
+          <option value="ta">Tamil</option>
+          <option value="ur">Urdu</option>
+        </select>
+
+        <label for="demo-token">Operator demo token</label>
+        <input
+          id="demo-token"
+          type="password"
+          inputmode="text"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          data-lpignore="true"
+          minlength="16"
+          maxlength="512"
+          placeholder="Type the short-lived demo token"
+        >
+        <p class="security-note">
+          The token is sent once inside the authenticated WebSocket start
+          message, cleared immediately, and never stored by this page.
+        </p>
+
+        <div class="button-row">
+          <button id="start" type="button">Start</button>
+          <button id="stop" type="button" class="secondary" disabled>Stop</button>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite">
+          Ready for an operator.
+        </p>
+      </section>
+
+      <section class="results" aria-label="Voice pipeline results">
+        <article class="panel">
+          <h2>Live transcript</h2>
+          <dl>
+            <dt>Partial</dt>
+            <dd id="partial">—</dd>
+            <dt>Committed</dt>
+            <dd id="committed">—</dd>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <h2>Final result</h2>
+          <p id="outcome" class="outcome">—</p>
+        </article>
+
+        <article class="panel metrics-panel">
+          <h2>Latency</h2>
+          <pre id="latency">Client timings appear after the final result.</pre>
+          <p class="hint">
+            “End send → receipt” is the browser-observed post-utterance metric.
+            “First frame → receipt” includes speaking time.
+          </p>
+        </article>
+      </section>
+
+      <footer>
+        Speech-to-text powered by
+        <a href="https://11.ai" rel="noreferrer">ElevenLabs</a>.
+        Answers are produced locally from retrieved evidence.
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "measured_at_utc": "2026-08-21T20:00:22.126971+00:00",
+  "provider": "sarvam",
+  "audio": {
+    "file": "stt_sample.wav",
+    "sample_rate_hz": 16000,
+    "channels": 1,
+    "sample_width_bits": 16,
+    "frame_count": 72582,
+    "duration_ms": 4536.375
+  },
+  "configuration": {
+    "trials": 10,
+    "language_code": "en-IN",
+    "mode": "transcribe",
+    "endpointing": "manual",
+    "silence_duration_ms": 100,
+    "chunk_ms": 250,
+    "realtime_pacing": true
+  },
+  "outcomes": {
+    "attempted": 10,
+    "successful": 10,
+    "failed": 0,
+    "success_rate": 1.0
+  },
+  "latency_ms": {
+    "connection": {
+      "samples": 10,
+      "missing": 0,
+      "mean": 142.13055839354638,
+      "p50": 133.75377049669623,
+      "p70": 140.7520501932595,
+      "p100": 214.3416249891743
+    },
+    "first_partial_from_start": {
+      "samples": 10,
+      "missing": 0,
+      "mean": 986.8808583996724,
+      "p50": 978.3015834982507,
+      "p70": 983.082708006259,
+      "p100": 1067.0720839989372
+    },
+    "final_from_start": {
+      "samples": 10,
+      "missing": 0,
+      "mean": 4938.201537600253,
+      "p50": 4925.640166999074,
+      "p70": 4928.893520601559,
+      "p100": 5012.811958993552
+    },
+    "final_after_audio_eof": {
+      "samples": 10,
+      "missing": 0,
+      "mean": 189.4431668013567,
+      "p50": 187.1672500128625,
+      "p70": 190.5024751147721,
+      "p100": 220.37333299522288
+    },
+    "total": {
+      "samples": 10,
+      "missing": 0,
+      "mean": 4975.985212498927,
+      "p50": 4962.323041501804,
+      "p70": 4964.173424895853,
+      "p100": 5059.676208999008
+    }
+  },
+  "transcript_stability": {
+    "successful_trials": 10,
+    "unique_transcripts": 1,
+    "all_identical": true,
+    "modal_transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+    "modal_count": 10,
+    "modal_rate": 1.0
+  },
+  "reference_quality": {
+    "reference": "Um, what is the capital of India? And, uh, how many people live there?",
+    "strict_exact_match": {
+      "matches": 10,
+      "attempted_trials": 10,
+      "rate": 1.0
+    },
+    "normalized_exact_match": {
+      "matches": 10,
+      "attempted_trials": 10,
+      "rate": 1.0
+    }
+  },
+  "trials": [
+    {
+      "trial": 1,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 12,
+      "latency_ms": {
+        "connection": 127.67420799355023,
+        "first_partial_from_start": 977.528124989476,
+        "final_from_start": 4928.341582999565,
+        "final_after_audio_eof": 189.41945800906979,
+        "total": 4962.677041999996
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    },
+    {
+      "trial": 2,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 12,
+      "latency_ms": {
+        "connection": 152.7104589913506,
+        "first_partial_from_start": 1000.4694590170402,
+        "final_from_start": 4982.647917000577,
+        "final_after_audio_eof": 220.37333299522288,
+        "total": 5026.335000002291
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    },
+    {
+      "trial": 3,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 12,
+      "latency_ms": {
+        "connection": 127.84237498999573,
+        "first_partial_from_start": 974.114707991248,
+        "final_from_start": 4920.881083002314,
+        "final_after_audio_eof": 181.32595799397677,
+        "total": 4956.1900419939775
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    },
+    {
+      "trial": 4,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 12,
+      "latency_ms": {
+        "connection": 121.28662498435006,
+        "first_partial_from_start": 961.0111250076443,
+        "final_from_start": 4909.805083007086,
+        "final_after_audio_eof": 189.4247500167694,
+        "total": 4944.307124998886
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    },
+    {
+      "trial": 5,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 12,
+      "latency_ms": {
+        "connection": 134.78949997806922,
+        "first_partial_from_start": 975.6349999806844,
+        "final_from_start": 4922.910749999573,
+        "final_after_audio_eof": 176.80845901486464,
+        "total": 4957.596041000215
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    },
+    {
+      "trial": 6,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 12,
+      "latency_ms": {
+        "connection": 132.71804101532325,
+        "first_partial_from_start": 982.7208330098074,
+        "final_from_start": 4927.1458750008605,
+        "final_after_audio_eof": 183.87920898385346,
+        "total": 4961.969041003613
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    },
+    {
+      "trial": 7,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 12,
+      "latency_ms": {
+        "connection": 214.3416249891743,
+        "first_partial_from_start": 1067.0720839989372,
+        "final_from_start": 5012.811958993552,
+        "final_after_audio_eof": 195.80774998757988,
+        "total": 5059.676208999008
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    },
+    {
+      "trial": 8,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 12,
+      "latency_ms": {
+        "connection": 140.30599998659454,
+        "first_partial_from_start": 983.9270829979796,
+        "final_from_start": 4930.181375006214,
+        "final_after_audio_eof": 184.9150420166552,
+        "total": 4967.560082994169
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    },
+    {
+      "trial": 9,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 11,
+      "latency_ms": {
+        "connection": 127.84391699824482,
+        "first_partial_from_start": 967.2551249968819,
+        "final_from_start": 4924.134458997287,
+        "final_after_audio_eof": 193.01716701011173,
+        "total": 4960.819542000536
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    },
+    {
+      "trial": 10,
+      "status": "success",
+      "transcript": "Um, what is the capital of India? And, uh, how many people live there?",
+      "language_code": "en-IN",
+      "partial_count": 12,
+      "latency_ms": {
+        "connection": 141.79283400881104,
+        "first_partial_from_start": 979.0750420070253,
+        "final_from_start": 4923.155291995499,
+        "final_after_audio_eof": 179.46054198546335,
+        "total": 4962.721999996575
+      },
+      "strict_reference_match": true,
+      "normalized_reference_match": true
+    }
+  ]
+}

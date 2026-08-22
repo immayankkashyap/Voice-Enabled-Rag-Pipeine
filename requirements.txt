@@ -11,8 +11,10 @@ websockets>=13.0
 faiss-cpu>=1.10
 groq>=0.18
 numpy>=2.1
-torch>=2.5
-sentence-transformers>=3.4
+torch==2.13.0
+sentence-transformers==6.0.0
+transformers==5.15.1
+peft==0.20.0
 
 # Dataset inspection (scripts/inspect_dataset.py)
 datasets>=3.2

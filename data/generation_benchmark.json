@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "measured_at_utc": "2026-08-21T20:03:00.911568+00:00",
+  "provider": "groq",
+  "fixture": {
+    "name": "synthetic-generation-fixture",
+    "query": "When was Sundarpur founded and what is its civic bird?",
+    "context_chunk_ids": [
+      "fixture-1",
+      "fixture-2",
+      "fixture-3"
+    ]
+  },
+  "configuration": {
+    "trials": 10,
+    "model": "qwen/qwen3.6-27b",
+    "max_output_tokens": 96,
+    "temperature": 0.0,
+    "timeout_seconds": 15.0,
+    "max_attempts": 3,
+    "reasoning_effort": null,
+    "service_tier": null
+  },
+  "outcomes": {
+    "attempted": 10,
+    "successful": 10,
+    "failed": 0,
+    "success_rate": 1.0,
+    "failures_by_type": {}
+  },
+  "latency_ms": {
+    "time_to_first_token": {
+      "samples": 10,
+      "missing": 0,
+      "mean": 111.13860420009587,
+      "p50": 107.74260450853035,
+      "p70": 109.62528378877323,
+      "p100": 147.40675000939518
+    },
+    "total": {
+      "samples": 10,
+      "missing": 0,
+      "mean": 179.9464168958366,
+      "p50": 174.72354200435802,
+      "p70": 176.54736268450506,
+      "p100": 229.0197919937782
+    }
+  },
+  "answer_stability": {
+    "successful_trials": 10,
+    "unique_answers": 1,
+    "normalized_unique_answers": 1,
+    "all_identical": true,
+    "modal_answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+    "modal_count": 10,
+    "modal_rate": 1.0,
+    "variants": [
+      {
+        "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+        "sha256": "b5162eaf6255c4026486094c03b6c1dfc173ecb0dc1422a0d36afbbd9ed593f7",
+        "count": 10
+      }
+    ]
+  },
+  "trials": [
+    {
+      "trial": 1,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 147.40675000939518,
+        "total": 229.0197919937782
+      }
+    },
+    {
+      "trial": 2,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 106.51208300259896,
+        "total": 173.59737498918548
+      }
+    },
+    {
+      "trial": 3,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 106.8130409985315,
+        "total": 173.55987499468029
+      }
+    },
+    {
+      "trial": 4,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 109.31645898381248,
+        "total": 177.03733398229815
+      }
+    },
+    {
+      "trial": 5,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 108.43004201888107,
+        "total": 175.84970901953056
+      }
+    },
+    {
+      "trial": 6,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 102.36983399954624,
+        "total": 170.6818339880556
+      }
+    },
+    {
+      "trial": 7,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 110.34587500034831,
+        "total": 176.33737498545088
+      }
+    },
+    {
+      "trial": 8,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 110.72666599648073,
+        "total": 181.64575000992045
+      }
+    },
+    {
+      "trial": 9,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 102.41012499318458,
+        "total": 169.25854099099524
+      }
+    },
+    {
+      "trial": 10,
+      "status": "success",
+      "answer": "Sundarpur was founded in 1912 [chunk:fixture-1], and its civic bird is the blue kite [chunk:fixture-2].",
+      "cited_chunk_ids": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "finish_reason": "stop",
+      "latency_ms": {
+        "time_to_first_token": 107.05516699817963,
+        "total": 172.47658400447108
+      }
+    }
+  ]
+}

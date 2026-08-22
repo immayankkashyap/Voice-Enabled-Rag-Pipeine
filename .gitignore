@@ -23,7 +23,17 @@ venv/
 # Large/generated local artifacts. Reports remain trackable as submission evidence.
 data/cache/
 data/raw/
+data/index_source_subset.json
+data/index_build_work/
 data/*.faiss
 data/*.npy
 data/*.npz
+data/**/*.faiss
+data/**/*.npy
+data/**/*.npz
 
+# The bounded ~3 MiB demo bundle is intentionally versionable so a clean clone
+# can start without a network rebuild. Larger ad-hoc index artifacts stay ignored.
+!data/faiss_index/
+!data/faiss_index/*.faiss
+!data/faiss_index/full_embeddings.npy

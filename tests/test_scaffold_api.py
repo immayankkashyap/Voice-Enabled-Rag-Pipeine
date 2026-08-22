@@ -16,12 +16,17 @@ class ScaffoldAPITests(unittest.TestCase):
     def test_health_reports_current_phase(self) -> None:
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["implementation_phase"], "dataset_profiling")
+        self.assertEqual(
+            response.json()["implementation_phase"], "day3_free_demo_harness"
+        )
+        self.assertFalse(response.json()["rag_ready"])
+        self.assertEqual(response.json()["stt_provider"], "elevenlabs")
+        self.assertEqual(response.json()["answer_mode"], "local_extractive")
 
     def test_rag_refuses_to_fabricate_an_answer(self) -> None:
         response = self.client.post("/rag", json={"query": "What is RAG?"})
         self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["error_code"], "pipeline_not_implemented")
+        self.assertEqual(response.json()["error_code"], "rag_runtime_not_ready")
         self.assertFalse(response.json()["retryable"])
 
     def test_request_rejects_impossible_candidate_counts(self) -> None:

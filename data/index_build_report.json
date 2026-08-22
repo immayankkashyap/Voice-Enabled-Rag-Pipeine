@@ -1,0 +1,55 @@
+{
+  "dataset": "ai4bharat/MSMARCO-XI",
+  "revision": "main",
+  "split": "validation",
+  "languages": [
+    "hi",
+    "ta",
+    "ur"
+  ],
+  "records_per_language": 10,
+  "queries_saved": 30,
+  "available_documents_before_cap": 300,
+  "documents_indexed": 300,
+  "chunks_indexed": 300,
+  "chunk_tokens": {
+    "mean": 84.69333333333333,
+    "min": 20,
+    "max": 168
+  },
+  "subset_reason": "Bounded local build: first 10 validation query records for hi, ta, ur (covering distinct Indic scripts), capped at 300 passages to keep CPU indexing reproducible.",
+  "embedding_model": "jinaai/jina-embeddings-v3-hf",
+  "embedding_model_revision": "d18862d9a48706220815554fac3ebb4dfa46fc28",
+  "device": "mps",
+  "model_exposes_token_embeddings": true,
+  "native_mrl": true,
+  "dimensions": {
+    "full": 1024,
+    "mrl": 128
+  },
+  "late_chunking_parameters": {
+    "document_window_tokens": 8192,
+    "target_chunk_tokens": 192,
+    "boundary_overlap_tokens": 32
+  },
+  "timings_ms": {
+    "dataset_fetch_by_language": {
+      "hi": 53637.35754098161,
+      "ta": 56731.42658401048,
+      "ur": 64460.214125021594
+    },
+    "dataset_fetch_total": 174828.99825001368,
+    "model_load": 8325.47770801466,
+    "late_chunking_and_embedding": 10331.03287499398,
+    "faiss_add_and_save": 9.288125002058223,
+    "total_wall": 194448.11970798764
+  },
+  "artifact_bytes": {
+    "mrl.faiss": 234866,
+    "full.faiss": 1228845,
+    "full_embeddings.npy": 1228928,
+    "chunks.json": 361225
+  },
+  "index_payload_bytes": 3053864,
+  "output_dir": "data/faiss_index"
+}

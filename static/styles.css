@@ -1,0 +1,243 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: #07100e;
+  color: #ecf8f3;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at top right, rgb(47 151 113 / 18%), transparent 32rem),
+    #07100e;
+}
+
+.shell {
+  width: min(920px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3.5rem 0 2rem;
+}
+
+header {
+  max-width: 680px;
+  margin-bottom: 2rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  color: #72e6ba;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0.55rem;
+  font-size: clamp(2.4rem, 7vw, 4.8rem);
+  line-height: 0.95;
+  letter-spacing: -0.055em;
+}
+
+h2 {
+  margin-bottom: 0.65rem;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.lede,
+.hint,
+.security-note,
+footer {
+  color: #9db4ac;
+  line-height: 1.55;
+}
+
+.panel {
+  border: 1px solid #234139;
+  border-radius: 1rem;
+  background: rgb(13 27 23 / 86%);
+  box-shadow: 0 1.2rem 3rem rgb(0 0 0 / 20%);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem 1rem;
+  padding: 1.25rem;
+}
+
+.controls > div:first-child,
+.controls .security-note,
+.controls .button-row,
+.controls .status {
+  grid-column: 1 / -1;
+}
+
+label,
+dt {
+  color: #b9cec6;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+select,
+input,
+button {
+  width: 100%;
+  min-height: 2.9rem;
+  border: 1px solid #31574a;
+  border-radius: 0.65rem;
+  font: inherit;
+}
+
+select,
+input {
+  padding: 0 0.8rem;
+  background: #091713;
+  color: #ecf8f3;
+  outline: none;
+}
+
+select:focus-visible,
+input:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid #72e6ba;
+  outline-offset: 2px;
+}
+
+.security-note,
+.hint {
+  margin-bottom: 0;
+  font-size: 0.82rem;
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+button {
+  border-color: #72e6ba;
+  background: #72e6ba;
+  color: #04100c;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: #ecf8f3;
+}
+
+button:disabled {
+  border-color: #30443d;
+  background: #1b2a25;
+  color: #70837c;
+  cursor: not-allowed;
+}
+
+.status {
+  min-height: 1.5rem;
+  margin-bottom: 0;
+  color: #72e6ba;
+}
+
+.status[data-kind="error"] {
+  color: #ff9d9d;
+}
+
+.results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.results .panel {
+  min-width: 0;
+  padding: 1.25rem;
+}
+
+.metrics-panel {
+  grid-column: 1 / -1;
+}
+
+dl {
+  margin: 0;
+}
+
+dt:not(:first-child) {
+  margin-top: 1rem;
+}
+
+dd {
+  min-height: 1.5rem;
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  color: #ecf8f3;
+  line-height: 1.5;
+}
+
+.outcome {
+  min-height: 4.5rem;
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.outcome[data-kind="refused"] {
+  color: #ffc979;
+}
+
+pre {
+  margin: 0;
+  overflow-x: auto;
+  color: #cce4db;
+  font: 0.84rem/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+footer {
+  margin-top: 1.5rem;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+a {
+  color: #72e6ba;
+}
+
+@media (max-width: 620px) {
+  .shell {
+    padding-top: 2rem;
+  }
+
+  .controls,
+  .results {
+    grid-template-columns: 1fr;
+  }
+
+  .controls > *,
+  .metrics-panel {
+    grid-column: 1;
+  }
+}

@@ -10,7 +10,7 @@ from typing import ClassVar
 from unittest.mock import patch
 
 from app.schemas import GenerationResult
-from tests import test_generation
+from scripts import test_generation
 
 _ANSWER = (
     "Sundarpur was founded in 1912 [chunk:fixture-1] and its civic bird is "

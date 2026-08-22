@@ -35,7 +35,7 @@ def _write_wav(path: Path, *, sample_value: int = 0, frames: int = 320) -> None:
 
 def _transcription(text: str) -> TranscriptionResult:
     return TranscriptionResult(
-        provider="elevenlabs",
+        provider="sarvam",
         model="scribe_v2_realtime",
         transcript=text,
         language_code="hin",

@@ -56,7 +56,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.schemas import TranscriptionResult, VoiceRAGResponse
-from scripts.benchmark_voice_pipeline import (
+from scripts.benchmark_support import (
     _BenchmarkSample,
     _distribution,
     _load_samples,

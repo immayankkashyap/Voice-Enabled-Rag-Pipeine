@@ -1,4 +1,4 @@
-"""FastAPI harness for the warmed, free-tier-gated voice RAG demo."""
+"""FastAPI harness for the warmed Sarvam voice RAG service."""
 
 from __future__ import annotations
 
@@ -21,20 +21,17 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .elevenlabs_stt import (
-    ElevenLabsStreamingSTT,
-    ElevenLabsSTTError,
-    ElevenLabsSTTSettings,
-)
 from .runtime import RuntimeLoadError, RuntimeServices, RuntimeSettings, load_runtime
 from .schemas import (
     ErrorResponse,
     HealthResponse,
     RAGRequest,
     RAGResponse,
+    StageLatencies,
     VoicePipelineLatencies,
     VoiceRAGResponse,
 )
+from .stt import SarvamStreamingSTT, SarvamSTTError, SarvamSTTSettings
 
 load_dotenv()
 
@@ -67,24 +64,13 @@ class _DemoStaticFiles(StaticFiles):
         return response
 
 
-_ISO2_TO_ELEVENLABS = {
-    "as": "asm",
-    "bn": "ben",
-    "gu": "guj",
-    "hi": "hin",
-    "kn": "kan",
-    "ml": "mal",
-    "mr": "mar",
-    "ne": "nep",
-    "or": "ori",
-    "pa": "pan",
-    "sa": "san",
-    "ta": "tam",
-    "te": "tel",
-    "ur": "urd",
-    "en": "eng",
+_ISO2_TO_SARVAM = {
+    "hi": "hi-IN",
+    "ta": "ta-IN",
+    "ur": "ur-IN",
+    "en": "en-IN",
 }
-_ELEVENLABS_TO_ISO2 = {value: key for key, value in _ISO2_TO_ELEVENLABS.items()}
+_SARVAM_TO_ISO2 = {value.casefold(): key for key, value in _ISO2_TO_SARVAM.items()}
 
 
 class _VoiceProtocolError(RuntimeError):
@@ -125,16 +111,18 @@ class VoiceAccessSettings:
         source = os.environ if environ is None else environ
         origins = tuple(
             value.strip()
-            for value in source.get("ELEVENLABS_ALLOWED_ORIGINS", "").split(",")
+            for value in source.get("VOICE_ALLOWED_ORIGINS", "").split(",")
             if value.strip()
+        )
+        require_origin_value = source.get(
+            "VOICE_REQUIRE_ORIGIN",
+            "true",
         )
         return cls(
             demo_token=source.get("VOICE_DEMO_TOKEN", ""),
             allowed_origins=origins,
-            require_origin=(
-                source.get("ELEVENLABS_REQUIRE_ORIGIN", "true").strip().lower()
-                not in {"0", "false", "no", "off"}
-            ),
+            require_origin=require_origin_value.strip().lower()
+            not in {"0", "false", "no", "off"},
             max_frame_bytes=int(source.get("VOICE_DEMO_MAX_FRAME_BYTES", "16000")),
             sessions_per_window=int(source.get("VOICE_DEMO_SESSIONS_PER_MINUTE", "6")),
             rate_limit_window_seconds=float(
@@ -177,13 +165,6 @@ class _VoiceRateLimiter:
             events.append(now)
 
 
-def _bool_env(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() not in {"0", "false", "no", "off"}
-
-
 def _int_env(name: str, default: int) -> int:
     return int(os.getenv(name, str(default)))
 
@@ -192,31 +173,20 @@ def _float_env(name: str, default: float) -> float:
     return float(os.getenv(name, str(default)))
 
 
-def _origins_env() -> tuple[str, ...]:
-    return tuple(
-        value.strip()
-        for value in os.getenv("ELEVENLABS_ALLOWED_ORIGINS", "").split(",")
-        if value.strip()
-    )
-
-
-def _stt_settings(language_code: str = "eng") -> ElevenLabsSTTSettings:
-    return ElevenLabsSTTSettings.from_env(
+def _stt_settings(language_code: str = "en-IN") -> SarvamSTTSettings:
+    return SarvamSTTSettings(
+        api_key=os.getenv("SARVAM_API_KEY", ""),
         language_code=language_code,
-        allowed_origins=_origins_env(),
-        require_origin=_bool_env("ELEVENLABS_REQUIRE_ORIGIN", True),
-        max_audio_seconds=_float_env("ELEVENLABS_DEMO_MAX_AUDIO_SECONDS", 15.0),
-        max_concurrent_sessions=_int_env("ELEVENLABS_DEMO_MAX_CONCURRENT_SESSIONS", 1),
-        daily_session_cap=_int_env("ELEVENLABS_DEMO_DAILY_SESSION_CAP", 20),
-        daily_token_cap=_int_env("ELEVENLABS_DEMO_DAILY_TOKEN_CAP", 25),
+        mode="transcribe",
+        endpointing="manual",
+        sample_rate=16_000,
+        silence_duration_ms=_int_env("SARVAM_SILENCE_DURATION_MS", 100),
+        max_attempts=_int_env("SARVAM_MAX_ATTEMPTS", 3),
     )
 
 
 async def _close_stt_clients(application: FastAPI) -> None:
-    clients = list(getattr(application.state, "stt_clients", {}).values())
-    await asyncio.gather(
-        *(client.aclose() for client in clients), return_exceptions=True
-    )
+    application.state.stt_clients.clear()
 
 
 @asynccontextmanager
@@ -246,6 +216,11 @@ async def lifespan(application: FastAPI):
         yield
     finally:
         await _close_stt_clients(application)
+        runtime = application.state.runtime
+        if runtime is not None:
+            close = getattr(runtime, "aclose", None)
+            if close is not None:
+                await asyncio.gather(close(), return_exceptions=True)
         application.state.lifespan_started = False
 
 
@@ -253,8 +228,8 @@ app = FastAPI(
     title="Voice-Enabled RAG Pipeline",
     version="0.2.0",
     description=(
-        "ElevenLabs Free allowance → local Jina/FAISS retrieval → "
-        "zero-cost extractive answer → deterministic guardrails"
+        "Sarvam Realtime STT → local Jina/FAISS retrieval → "
+        "budgeted hybrid generation → deterministic guardrails"
     ),
     lifespan=lifespan,
 )
@@ -269,6 +244,13 @@ async def browser_demo() -> FileResponse:
         media_type="text/html",
         headers=_DEMO_SECURITY_HEADERS,
     )
+
+
+@app.get("/", include_in_schema=False)
+async def root_demo() -> FileResponse:
+    """Expose the operator demo at the deployment root."""
+
+    return await browser_demo()
 
 
 app.mount(
@@ -313,7 +295,7 @@ async def _stt_client(
     application: FastAPI,
     *,
     language_code: str,
-) -> ElevenLabsStreamingSTT:
+) -> SarvamStreamingSTT:
     existing = application.state.stt_clients.get(language_code)
     if existing is not None:
         return existing
@@ -321,14 +303,7 @@ async def _stt_client(
         existing = application.state.stt_clients.get(language_code)
         if existing is not None:
             return existing
-        client = ElevenLabsStreamingSTT(_stt_settings(language_code))
-        try:
-            await client.token_broker.ensure_free_tier()
-        except BaseException:
-            # This lazy path has the same ownership boundary as startup. Close
-            # on terminal refusal and cancellation before propagating it.
-            await asyncio.gather(client.aclose(), return_exceptions=True)
-            raise
+        client = SarvamStreamingSTT(_stt_settings(language_code))
         application.state.stt_clients[language_code] = client
         application.state.voice_error = None
         return client
@@ -342,7 +317,7 @@ async def health_check(request: Request) -> HealthResponse:
     )
     return HealthResponse(
         status="ok" if runtime is not None else "degraded",
-        implementation_phase="day3_free_demo_harness",
+        implementation_phase="submission_ready_voice_rag",
         rag_ready=runtime is not None,
         voice_ready=voice_ready,
         vector_count=runtime.vector_count if runtime is not None else 0,
@@ -351,18 +326,33 @@ async def health_check(request: Request) -> HealthResponse:
             if runtime is not None
             else []
         ),
+        answer_mode=(
+            str(
+                getattr(
+                    runtime,
+                    "answer_mode",
+                    "hybrid_extractive_budgeted_groq_grounded",
+                )
+            )
+            if runtime is not None
+            else "hybrid_extractive_budgeted_groq_grounded"
+        ),
         latency_target_ms=request.app.state.runtime_settings.latency_target_ms,
     )
 
 
 @app.post(
     "/rag",
-    response_model=RAGResponse,
-    responses={status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse}},
+    response_model=RAGResponse | ErrorResponse,
+    responses={
+        status.HTTP_502_BAD_GATEWAY: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
 )
 async def process_rag_query(request: RAGRequest, raw_request: Request) -> Response:
-    """Run the warmed local retrieval/extractive/grounding path."""
+    """Run the warmed retrieval/generation/grounding path."""
 
+    started = time.perf_counter()
     try:
         runtime = await _runtime(raw_request.app)
     except RuntimeLoadError:
@@ -370,21 +360,47 @@ async def process_rag_query(request: RAGRequest, raw_request: Request) -> Respon
             error_code="rag_runtime_not_ready",
             message="The local model/index bundle is not ready.",
             retryable=False,
+            stage="runtime",
+            latencies=StageLatencies(
+                stt_ms=0.0,
+                input_safety_ms=0.0,
+                query_embedding_ms=0.0,
+                retrieval_stage_1_ms=0.0,
+                retrieval_stage_2_ms=0.0,
+                retrieval_ms=0.0,
+                relevance_ms=0.0,
+                generation_ms=0.0,
+                groundedness_ms=0.0,
+                output_ms=0.0,
+                total_ms=(time.perf_counter() - started) * 1000,
+                target_ms=raw_request.app.state.runtime_settings.latency_target_ms,
+                target_met=False,
+            ),
         )
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=error.model_dump(mode="json"),
         )
-    return await runtime.pipeline.answer(request)
+    result = await runtime.pipeline.answer(request)
+    if isinstance(result, ErrorResponse):
+        return JSONResponse(
+            status_code=(
+                status.HTTP_502_BAD_GATEWAY
+                if result.retryable
+                else status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            content=result.model_dump(mode="json"),
+        )
+    return result
 
 
 def _start_language(payload: dict[str, Any]) -> tuple[str, str]:
     raw = str(payload.get("language_code") or "hi").strip().lower()
     primary = raw.split("-", 1)[0]
-    provider_code = _ISO2_TO_ELEVENLABS.get(primary, primary)
-    if provider_code not in _ELEVENLABS_TO_ISO2:
+    provider_code = _ISO2_TO_SARVAM.get(primary, raw)
+    if provider_code.casefold() not in _SARVAM_TO_ISO2:
         raise _VoiceProtocolError("Unsupported demo language_code")
-    return provider_code, _ELEVENLABS_TO_ISO2[provider_code]
+    return provider_code, _SARVAM_TO_ISO2[provider_code.casefold()]
 
 
 async def _authorize_voice_start(
@@ -420,17 +436,16 @@ async def _authorize_voice_start(
 
 @app.websocket("/ws/voice-rag")
 async def voice_rag_socket(websocket: WebSocket) -> None:
-    """Proxy one explicit PCM16 turn through Scribe and the local RAG path.
+    """Proxy one explicit PCM16 turn through Sarvam and the RAG path.
 
     Client protocol: JSON ``{"event":"start","language_code":"hi",``
     ``"demo_token":"..."}``, then binary mono PCM16/16 kHz frames, then JSON
     ``{"event":"end"}``.
     """
 
+    socket_started = time.perf_counter()
     await websocket.accept()
     stt_task: asyncio.Task[Any] | None = None
-    settled_rag_task: asyncio.Task[RAGResponse] | None = None
-    settled_query: str | None = None
     audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=8)
     first_binary_received_at: float | None = None
     audio_end_received_at: float | None = None
@@ -451,7 +466,6 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
             # Reject before issuing an STT token: an index that cannot serve the
             # requested language must not consume even included provider quota.
             raise _VoiceProtocolError("The local index does not cover this language")
-        origin = websocket.headers.get("origin")
         existing_stt = websocket.app.state.stt_clients.get(provider_language)
         session_settings = (
             existing_stt.settings
@@ -459,8 +473,15 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
             else _stt_settings(provider_language)
         )
         sample_rate = int(session_settings.sample_rate)
+        max_audio_seconds = float(
+            getattr(
+                session_settings,
+                "max_audio_seconds",
+                _float_env("VOICE_MAX_AUDIO_SECONDS", 15.0),
+            )
+        )
         max_audio_bytes = int(
-            float(session_settings.max_audio_seconds) * sample_rate * 2
+            max_audio_seconds * sample_rate * 2
         )
         audio_bytes_received = 0
 
@@ -473,24 +494,6 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
 
         async def partial(text: str) -> None:
             await websocket.send_json({"event": "partial_transcript", "text": text})
-
-        async def prepare_settled_rag(text: str) -> None:
-            """Prepare one local answer, but never publish before exact commit."""
-
-            nonlocal settled_query, settled_rag_task
-            if settled_query == text and settled_rag_task is not None:
-                return
-            if settled_rag_task is not None and not settled_rag_task.done():
-                settled_rag_task.cancel()
-                await asyncio.gather(settled_rag_task, return_exceptions=True)
-            try:
-                request = RAGRequest(query=text, language_code=rag_language)
-            except ValueError:
-                settled_query = None
-                settled_rag_task = None
-                return
-            settled_query = text
-            settled_rag_task = asyncio.create_task(runtime.pipeline.answer(request))
 
         await websocket.send_json(
             {
@@ -524,12 +527,12 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
             assert stt_task is not None
             try:
                 await stt_task
-            except ElevenLabsSTTError:
+            except SarvamSTTError:
                 raise
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - sanitize the provider boundary
-                raise ElevenLabsSTTError(
+                raise SarvamSTTError(
                     "The speech-to-text stage ended unexpectedly"
                 ) from None
             raise _VoiceProtocolError(
@@ -568,7 +571,7 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
         # A byte-duration limit alone does not stop a silent/stalled browser
         # from holding a billable provider session open. Bound the entire live
         # turn as well, with a small allowance for transport scheduling.
-        max_turn_wall_seconds = float(session_settings.max_audio_seconds) + 2.0
+        max_turn_wall_seconds = max_audio_seconds + 2.0
         try:
             async with asyncio.timeout(max_turn_wall_seconds):
                 # Do not create a provider session until one bounded PCM frame
@@ -591,8 +594,6 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
                     stt.transcribe(
                         audio_chunks(),
                         on_partial=partial,
-                        on_settled=prepare_settled_rag,
-                        origin=origin,
                     )
                 )
                 await enqueue_while_stt_live(first_binary)
@@ -633,7 +634,16 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
                 "The voice turn exceeded its wall-clock limit"
             ) from None
 
-        transcription = await stt_task
+        try:
+            transcription = await stt_task
+        except SarvamSTTError:
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - sanitize retry exhaustion/provider errors
+            raise SarvamSTTError(
+                "The speech-to-text stage ended unexpectedly"
+            ) from None
         committed_at = time.perf_counter()
         if first_binary_received_at is None or audio_end_received_at is None:
             raise _VoiceProtocolError("The voice turn is missing its audio boundaries")
@@ -652,18 +662,19 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
             raise _VoiceProtocolError(
                 "The committed transcript is not a valid RAG query"
             ) from None
-        if settled_rag_task is not None and settled_query == transcription.transcript:
-            rag = await settled_rag_task
-        else:
-            if settled_rag_task is not None and not settled_rag_task.done():
-                settled_rag_task.cancel()
-                await asyncio.gather(settled_rag_task, return_exceptions=True)
-            rag = await runtime.pipeline.answer(committed_request)
+        rag = await runtime.pipeline.answer(committed_request)
+        if isinstance(rag, ErrorResponse):
+            await websocket.send_json(rag.model_dump(mode="json"))
+            await websocket.close(code=1013, reason="RAG pipeline failed")
+            return
         answered_at = time.perf_counter()
         committed_to_answer_ms = (answered_at - committed_at) * 1000
         first_audio_to_committed_ms = (committed_at - first_binary_received_at) * 1000
         audio_eof_to_committed_ms = (committed_at - audio_end_received_at) * 1000
         audio_eof_to_answer_ms = (answered_at - audio_end_received_at) * 1000
+        rag.latencies.stt_ms = audio_eof_to_committed_ms
+        rag.latencies.total_ms = audio_eof_to_answer_ms
+        rag.latencies.target_met = audio_eof_to_answer_ms <= runtime.pipeline.latency_target_ms
         response = VoiceRAGResponse(
             transcription=transcription,
             rag=rag,
@@ -671,7 +682,7 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
                 metric_definition=(
                     "Server-observed anchors: first_audio begins when ASGI receives "
                     "the first non-empty PCM frame; audio_eof begins when ASGI receives "
-                    "the end event; answer stops when the grounded local RAG result "
+                    "the end event; answer stops when the grounded RAG result "
                     "returns. Final response construction, WebSocket serialization/send, "
                     "client network, and rendering are excluded; provider audio duration "
                     "is reported separately."
@@ -695,18 +706,45 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         if stt_task is not None:
             stt_task.cancel()
-    except (ElevenLabsSTTError, RuntimeLoadError, _VoiceProtocolError) as exc:
+    except (SarvamSTTError, RuntimeLoadError, _VoiceProtocolError) as exc:
         if stt_task is not None and not stt_task.done():
             stt_task.cancel()
-        message = (
-            "Invalid voice WebSocket protocol input."
-            if isinstance(exc, _VoiceProtocolError)
-            else str(exc)
-        )
+        if isinstance(exc, _VoiceProtocolError):
+            error_code = "invalid_voice_input"
+            stage = "input"
+            message = "Invalid voice WebSocket protocol input."
+            retryable = False
+        elif isinstance(exc, SarvamSTTError):
+            error_code = "stt_failed"
+            stage = "stt"
+            message = "The speech-to-text provider failed."
+            retryable = True
+        else:
+            error_code = "rag_runtime_not_ready"
+            stage = "runtime"
+            message = "The local model/index bundle is not ready."
+            retryable = False
+        elapsed_ms = (time.perf_counter() - socket_started) * 1000
         error = ErrorResponse(
-            error_code="voice_pipeline_refused",
+            error_code=error_code,
             message=message,
-            retryable=False,
+            retryable=retryable,
+            stage=stage,
+            latencies=StageLatencies(
+                stt_ms=elapsed_ms if stage == "stt" else 0.0,
+                input_safety_ms=0.0,
+                query_embedding_ms=0.0,
+                retrieval_stage_1_ms=0.0,
+                retrieval_stage_2_ms=0.0,
+                retrieval_ms=0.0,
+                relevance_ms=0.0,
+                generation_ms=0.0,
+                groundedness_ms=0.0,
+                output_ms=0.0,
+                total_ms=elapsed_ms,
+                target_ms=websocket.app.state.runtime_settings.latency_target_ms,
+                target_met=elapsed_ms <= websocket.app.state.runtime_settings.latency_target_ms,
+            ),
         )
         try:
             await websocket.send_json(error.model_dump(mode="json"))
@@ -718,7 +756,3 @@ async def voice_rag_socket(websocket: WebSocket) -> None:
             if not stt_task.done():
                 stt_task.cancel()
             await asyncio.gather(stt_task, return_exceptions=True)
-        if settled_rag_task is not None:
-            if not settled_rag_task.done():
-                settled_rag_task.cancel()
-            await asyncio.gather(settled_rag_task, return_exceptions=True)

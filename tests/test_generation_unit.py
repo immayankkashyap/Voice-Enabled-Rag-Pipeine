@@ -9,8 +9,10 @@ from app.generation import (
     GroqAnswerGenerator,
     GroqGenerationError,
     GroqGenerationSettings,
+    HybridAnswerGenerator,
 )
-from tests.test_generation import synthetic_fixture_request
+from app.schemas import GenerationRequest, GenerationResult
+from scripts.test_generation import synthetic_fixture_request
 
 
 class _FakeStream:
@@ -72,6 +74,24 @@ class _FakeClient:
 
     async def close(self) -> None:
         return None
+
+
+class _StaticFastPath:
+    def __init__(self, answer: str) -> None:
+        self.answer = answer
+        self.calls = 0
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.calls += 1
+        cited_ids = [] if self.answer == REFUSAL_ANSWER else [request.context[0].chunk.id]
+        return GenerationResult(
+            answer=self.answer,
+            cited_chunk_ids=cited_ids,
+            model="local/test-fast-path",
+            finish_reason="stop",
+            time_to_first_token_ms=0.01,
+            total_ms=0.01,
+        )
 
 
 class GroqAnswerGeneratorTests(unittest.IsolatedAsyncioTestCase):
@@ -141,7 +161,11 @@ class GroqAnswerGeneratorTests(unittest.IsolatedAsyncioTestCase):
 
     def test_validates_model_specific_reasoning_effort(self) -> None:
         with self.assertRaisesRegex(ValueError, "Qwen 3"):
-            GroqGenerationSettings(api_key="test-key", reasoning_effort="low")
+            GroqGenerationSettings(
+                api_key="test-key",
+                model="qwen/qwen3.6-27b",
+                reasoning_effort="low",
+            )
         with self.assertRaisesRegex(ValueError, "GPT-OSS"):
             GroqGenerationSettings(
                 api_key="test-key",
@@ -154,6 +178,54 @@ class GroqAnswerGeneratorTests(unittest.IsolatedAsyncioTestCase):
                 model="allam-2-7b",
                 reasoning_effort="none",
             )
+
+    async def test_hybrid_skips_groq_when_measured_budget_is_insufficient(
+        self,
+    ) -> None:
+        client = _FakeClient()
+        fallback = GroqAnswerGenerator(
+            GroqGenerationSettings(api_key="test-key", max_attempts=1),
+            client=client,  # type: ignore[arg-type]
+        )
+        fast_path = _StaticFastPath(REFUSAL_ANSWER)
+        hybrid = HybridAnswerGenerator(
+            fallback,
+            fast_path=fast_path,  # type: ignore[arg-type]
+            min_fallback_budget_ms=350.0,
+        )
+        request = synthetic_fixture_request().model_copy(
+            update={"latency_budget_ms": 175.0}
+        )
+
+        result = await hybrid.generate(request)
+
+        self.assertEqual(result.answer, REFUSAL_ANSWER)
+        self.assertEqual(result.finish_reason, "budget_skipped")
+        self.assertEqual(hybrid.budget_skipped_fallbacks, 1)
+        self.assertEqual(hybrid.remote_fallbacks, 0)
+        self.assertIsNone(client.completions.arguments)
+
+    async def test_hybrid_uses_groq_when_budget_is_available(self) -> None:
+        client = _FakeClient()
+        fallback = GroqAnswerGenerator(
+            GroqGenerationSettings(api_key="test-key", max_attempts=1),
+            client=client,  # type: ignore[arg-type]
+        )
+        hybrid = HybridAnswerGenerator(
+            fallback,
+            fast_path=_StaticFastPath(REFUSAL_ANSWER),  # type: ignore[arg-type]
+            min_fallback_budget_ms=350.0,
+        )
+        request = synthetic_fixture_request().model_copy(
+            update={"latency_budget_ms": 500.0}
+        )
+
+        result = await hybrid.generate(request)
+
+        self.assertIn("founded in 1912", result.answer)
+        self.assertEqual(hybrid.remote_fallbacks, 1)
+        self.assertEqual(hybrid.budget_skipped_fallbacks, 0)
+        self.assertIsNotNone(client.completions.arguments)
 
 
 if __name__ == "__main__":

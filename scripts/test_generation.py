@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repeatable real-Groq benchmark using explicitly synthetic fixtures."""
+"""Repeatable live Groq check using explicitly synthetic fixtures."""
 
 from __future__ import annotations
 

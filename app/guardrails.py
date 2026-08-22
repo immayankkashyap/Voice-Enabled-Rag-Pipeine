@@ -14,9 +14,13 @@ import time
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
+from typing import Protocol
 
 from .schemas import (
+    ChunkRelevanceAssessment,
     GroundednessAssessment,
+    InputSafetyAssessment,
+    InputSafetyCategory,
     RefusalReason,
     RelevanceAssessment,
     RelevanceClassification,
@@ -72,6 +76,82 @@ _ENGLISH_FUNCTION_WORDS = frozenset(
 )
 _CONTRADICTION_SENSITIVE_TOKENS = frozenset({"no", "not", "never", "without"})
 
+_UNSAFE_RULES: tuple[tuple[InputSafetyCategory, str, re.Pattern[str]], ...] = (
+    (
+        InputSafetyCategory.PROMPT_INJECTION,
+        "instruction_override",
+        re.compile(
+            r"\b(?:ignore|disregard|override)\b.{0,48}"
+            r"\b(?:previous|prior|system|developer|instructions?|prompt)\b",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ),
+    (
+        InputSafetyCategory.PROMPT_INJECTION,
+        "secret_extraction",
+        re.compile(
+            r"\b(?:reveal|show|print|leak|expose)\b.{0,48}"
+            r"\b(?:system prompt|developer message|api[- ]?key|secret|credentials?)\b",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ),
+    (
+        InputSafetyCategory.PROMPT_INJECTION,
+        "jailbreak",
+        re.compile(r"\b(?:jailbreak|do anything now|developer mode)\b", re.IGNORECASE),
+    ),
+    (
+        InputSafetyCategory.HARMFUL,
+        "weapon_construction",
+        re.compile(
+            r"\b(?:build|make|create|assemble)\b.{0,48}"
+            r"\b(?:bomb|explosive|weapon)\b",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ),
+    (
+        InputSafetyCategory.HARMFUL,
+        "credential_theft",
+        re.compile(
+            r"\b(?:steal|phish|exfiltrate|harvest)\b.{0,48}"
+            r"\b(?:passwords?|credentials?|api[- ]?keys?)\b",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ),
+    (
+        InputSafetyCategory.HARMFUL,
+        "physical_harm",
+        re.compile(
+            r"\b(?:kill|murder|poison)\b.{0,32}"
+            r"\b(?:a person|people|someone|somebody)\b",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ),
+    (
+        InputSafetyCategory.INAPPROPRIATE,
+        "sexual_content_involving_minors",
+        re.compile(
+            r"\b(?:sexual|explicit|pornographic)\b.{0,40}"
+            r"\b(?:child|children|minor|minors)\b",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ),
+)
+_UNSAFE_CONTROL_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-\u2069]")
+
+
+@dataclass(frozen=True, slots=True)
+class InputSafetyGuardrailSettings:
+    """Auditable deterministic input rules evaluated before retrieval."""
+
+    enabled_rules: tuple[str, ...] = tuple(rule[1] for rule in _UNSAFE_RULES)
+
+    def __post_init__(self) -> None:
+        known = {rule[1] for rule in _UNSAFE_RULES}
+        unknown = set(self.enabled_rules) - known
+        if unknown:
+            raise ValueError("Unknown input-safety rules: " + ", ".join(sorted(unknown)))
+
 
 @dataclass(frozen=True, slots=True)
 class RelevanceGuardrailSettings:
@@ -110,15 +190,38 @@ class GroundednessGuardrailSettings:
     """Thresholds for citation and sentence-evidence validation."""
 
     min_sentence_token_support: float = 0.80
+    ambiguous_sentence_token_support: float = 0.60
+    min_judge_budget_ms: float = 75.0
     safe_refusal_texts: tuple[str, ...] = (SAFE_REFUSAL_TEXT,)
 
     def __post_init__(self) -> None:
-        if not 0 <= self.min_sentence_token_support <= 1:
-            raise ValueError("min_sentence_token_support must be between 0 and 1")
+        if not (
+            0
+            <= self.ambiguous_sentence_token_support
+            <= self.min_sentence_token_support
+            <= 1
+        ):
+            raise ValueError(
+                "grounding thresholds must satisfy 0 <= ambiguous <= minimum <= 1"
+            )
+        if not math.isfinite(self.min_judge_budget_ms) or self.min_judge_budget_ms < 0:
+            raise ValueError("min_judge_budget_ms must be finite and non-negative")
         if not self.safe_refusal_texts or any(
             not refusal.strip() for refusal in self.safe_refusal_texts
         ):
             raise ValueError("safe_refusal_texts must contain non-blank text")
+
+
+class GroundednessJudge(Protocol):
+    """Optional slow fallback used only for lexically ambiguous answers."""
+
+    async def assess(
+        self,
+        *,
+        answer: str,
+        chunks: list[RetrievedChunk],
+    ) -> bool:
+        """Return whether the answer is grounded in the supplied chunks."""
 
 
 def _lexical_tokens(text: str) -> list[str]:
@@ -215,6 +318,61 @@ def _bounded_signal_confidence(full_score: float, coverage: float) -> float:
     return min(0.95, max(0.0, (normalized_score + coverage) / 2))
 
 
+class InputSafetyGuardrail:
+    """Reject a small, explicit set of unsafe requests before retrieval."""
+
+    def __init__(self, settings: InputSafetyGuardrailSettings | None = None) -> None:
+        self.settings = settings or InputSafetyGuardrailSettings()
+
+    async def assess(self, *, text: str) -> InputSafetyAssessment:
+        started = time.perf_counter()
+
+        def result(
+            is_safe: bool,
+            category: InputSafetyCategory,
+            reason: str,
+            matched_rule: str | None = None,
+        ) -> InputSafetyAssessment:
+            return InputSafetyAssessment(
+                is_safe=is_safe,
+                category=category,
+                matched_rule=matched_rule,
+                reason=reason,
+                latency_ms=(time.perf_counter() - started) * 1000,
+            )
+
+        normalized = unicodedata.normalize("NFKC", text).strip()
+        if not normalized or not _content_tokens(normalized):
+            return result(
+                False,
+                InputSafetyCategory.INVALID,
+                "invalid_input: the query is blank or has no lexical content",
+                "non_lexical_input",
+            )
+        if _UNSAFE_CONTROL_PATTERN.search(normalized):
+            return result(
+                False,
+                InputSafetyCategory.INVALID,
+                "invalid_input: disallowed control characters were detected",
+                "control_characters",
+            )
+
+        enabled = set(self.settings.enabled_rules)
+        for category, rule_id, pattern in _UNSAFE_RULES:
+            if rule_id in enabled and pattern.search(normalized):
+                return result(
+                    False,
+                    category,
+                    "unsafe_input: the query matched a deterministic safety rule",
+                    rule_id,
+                )
+        return result(
+            True,
+            InputSafetyCategory.SAFE,
+            "safe_input: no deterministic unsafe-input rule matched",
+        )
+
+
 class RelevanceGuardrail:
     """Conservatively classify retrieved evidence and expose refusal routing."""
 
@@ -234,11 +392,13 @@ class RelevanceGuardrail:
             confidence: float,
             accepted_chunk_ids: list[str],
             reason: str,
+            chunk_assessments: list[ChunkRelevanceAssessment] | None = None,
         ) -> RelevanceAssessment:
             return RelevanceAssessment(
                 classification=classification,
                 confidence=confidence,
                 accepted_chunk_ids=accepted_chunk_ids,
+                chunk_assessments=chunk_assessments or [],
                 reason=reason,
                 latency_ms=(time.perf_counter() - started) * 1000,
             )
@@ -268,35 +428,73 @@ class RelevanceGuardrail:
                 for token in _content_tokens(scope_term)
             }
             if not query_terms.intersection(scope_tokens):
+                assessments = [
+                    ChunkRelevanceAssessment(
+                        chunk_id=item.chunk.id,
+                        classification=RelevanceClassification.INCORRECT,
+                        full_score=item.full_score,
+                        query_token_coverage=_query_coverage(query, item.chunk.text),
+                        reason="scope_mismatch",
+                    )
+                    for item in sorted(chunks, key=lambda chunk: chunk.rank)
+                ]
                 return result(
                     RelevanceClassification.INCORRECT,
                     0.95,
                     [],
                     "off_topic: query contains none of the configured scope terms",
+                    assessments,
                 )
 
-        candidates: list[tuple[RetrievedChunk, float]] = []
+        assessments: list[ChunkRelevanceAssessment] = []
+        correct: list[tuple[RetrievedChunk, float]] = []
+        ambiguous: list[tuple[RetrievedChunk, float]] = []
         best_coverage = 0.0
         for item in sorted(chunks, key=lambda chunk: chunk.rank):
             coverage = _query_coverage(query, item.chunk.text)
             best_coverage = max(best_coverage, coverage)
             if (
                 item.full_score + self.settings.score_epsilon
+                >= self.settings.strong_full_score
+                and coverage >= self.settings.strong_query_token_coverage
+            ):
+                classification = RelevanceClassification.CORRECT
+                reason = "strong_similarity_and_lexical_coverage"
+                correct.append((item, coverage))
+            elif (
+                item.full_score + self.settings.score_epsilon
                 >= self.settings.min_full_score
                 and coverage >= self.settings.min_query_token_coverage
             ):
-                candidates.append((item, coverage))
+                classification = RelevanceClassification.AMBIGUOUS
+                reason = "minimum_similarity_and_lexical_coverage_only"
+                ambiguous.append((item, coverage))
+            else:
+                classification = RelevanceClassification.INCORRECT
+                reason = "below_similarity_or_lexical_coverage_gate"
+            assessments.append(
+                ChunkRelevanceAssessment(
+                    chunk_id=item.chunk.id,
+                    classification=classification,
+                    full_score=item.full_score,
+                    query_token_coverage=coverage,
+                    reason=reason,
+                )
+            )
 
-        if not candidates:
+        if not correct and not ambiguous:
             confidence = 0.90 if best_coverage == 0 else 0.60
+            prefix = "off_topic" if best_coverage == 0 else "no_relevant_context"
             return result(
                 RelevanceClassification.INCORRECT,
                 confidence,
                 [],
-                "no_relevant_context: no chunk passed both the lexical and "
+                f"{prefix}: no chunk passed both the lexical and "
                 "normalized-cosine gates; similarity alone is not semantic proof",
+                assessments,
             )
 
+        candidates = correct or ambiguous
         accepted_ids = [item.chunk.id for item, _ in candidates]
         strongest_item, strongest_coverage = max(
             candidates, key=lambda candidate: (candidate[1], candidate[0].full_score)
@@ -304,17 +502,14 @@ class RelevanceGuardrail:
         confidence = _bounded_signal_confidence(
             strongest_item.full_score, strongest_coverage
         )
-        if (
-            strongest_item.full_score + self.settings.score_epsilon
-            < self.settings.strong_full_score
-            or strongest_coverage < self.settings.strong_query_token_coverage
-        ):
+        if not correct:
             return result(
                 RelevanceClassification.AMBIGUOUS,
                 confidence,
                 accepted_ids,
                 "ambiguous_retrieval: candidate evidence passed minimum gates but "
                 "not both strong gates; refuse rather than infer relevance",
+                assessments,
             )
 
         return result(
@@ -323,6 +518,7 @@ class RelevanceGuardrail:
             accepted_ids,
             "relevant_evidence: candidate evidence passed conservative lexical "
             "and normalized-cosine gates; this does not certify semantic truth",
+            assessments,
         )
 
     @staticmethod
@@ -343,8 +539,14 @@ class RelevanceGuardrail:
 class GroundednessGuardrail:
     """Require every answer sentence to cite and overlap known evidence."""
 
-    def __init__(self, settings: GroundednessGuardrailSettings | None = None) -> None:
+    def __init__(
+        self,
+        settings: GroundednessGuardrailSettings | None = None,
+        *,
+        judge: GroundednessJudge | None = None,
+    ) -> None:
         self.settings = settings or GroundednessGuardrailSettings()
+        self.judge = judge
 
     def is_safe_refusal(self, answer: str) -> bool:
         """Return true only for a complete, configured refusal and no extra text."""
@@ -360,6 +562,7 @@ class GroundednessGuardrail:
         *,
         answer: str,
         chunks: list[RetrievedChunk],
+        remaining_budget_ms: float | None = None,
     ) -> GroundednessAssessment:
         started = time.perf_counter()
 
@@ -369,12 +572,17 @@ class GroundednessGuardrail:
             supporting_chunk_ids: list[str],
             unsupported_claims: list[str],
             reason: str,
+            *,
+            method: str = "lexical_citation",
+            judge_used: bool = False,
         ) -> GroundednessAssessment:
             return GroundednessAssessment(
                 is_grounded=is_grounded,
                 score=score,
                 supporting_chunk_ids=supporting_chunk_ids,
                 unsupported_claims=unsupported_claims,
+                method=method,
+                judge_used=judge_used,
                 reason=reason,
                 latency_ms=(time.perf_counter() - started) * 1000,
             )
@@ -426,6 +634,7 @@ class GroundednessGuardrail:
 
         supporting_ids: list[str] = []
         unsupported_claims: list[str] = []
+        ambiguous_claims: list[str] = []
         support_scores: list[float] = []
         for claim in claims:
             citation_ids = _CITATION_PATTERN.findall(claim)
@@ -444,14 +653,54 @@ class GroundednessGuardrail:
             support = _sentence_support(plain_claim, combined_evidence)
             support_scores.append(support)
             if support < self.settings.min_sentence_token_support:
-                unsupported_claims.append(plain_claim)
+                if support >= self.settings.ambiguous_sentence_token_support:
+                    ambiguous_claims.append(plain_claim)
+                else:
+                    unsupported_claims.append(plain_claim)
                 continue
             for chunk_id in citation_ids:
                 if chunk_id not in supporting_ids:
                     supporting_ids.append(chunk_id)
 
         score = sum(support_scores) / len(support_scores)
+        judge_budget_available = (
+            remaining_budget_ms is not None
+            and remaining_budget_ms >= self.settings.min_judge_budget_ms
+        )
+        if ambiguous_claims and not unsupported_claims:
+            if self.judge is not None and judge_budget_available:
+                try:
+                    judge_grounded = await self.judge.assess(
+                        answer=answer,
+                        chunks=chunks,
+                    )
+                except Exception:  # noqa: BLE001 - optional judge must fail closed
+                    judge_grounded = False
+                if judge_grounded:
+                    cited_ids = list(
+                        dict.fromkeys(_CITATION_PATTERN.findall(answer))
+                    )
+                    return result(
+                        True,
+                        score,
+                        cited_ids,
+                        [],
+                        "grounded_answer: the fast lexical check was ambiguous and "
+                        "the budget-gated judge accepted the cited claims",
+                        method="lexical_citation+judge",
+                        judge_used=True,
+                    )
+                unsupported_claims.extend(ambiguous_claims)
+                ambiguous_claims.clear()
+            else:
+                unsupported_claims.extend(ambiguous_claims)
+                ambiguous_claims.clear()
         if unsupported_claims:
+            fallback_reason = (
+                "judge rejected or failed closed"
+                if self.judge is not None and judge_budget_available
+                else "judge skipped because it was unavailable or outside the latency budget"
+            )
             return result(
                 False,
                 score,
@@ -459,7 +708,8 @@ class GroundednessGuardrail:
                 unsupported_claims,
                 "ungrounded_answer: every factual sentence must cite known chunks "
                 f"and reach {self.settings.min_sentence_token_support:.0%} lexical "
-                "token support",
+                f"token support; {fallback_reason}",
+                judge_used=self.judge is not None and judge_budget_available,
             )
         return result(
             True,

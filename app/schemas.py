@@ -37,11 +37,22 @@ class ResponseStatus(StrEnum):
 
 
 class RefusalReason(StrEnum):
+    UNSAFE_INPUT = "unsafe_input"
     OFF_TOPIC = "off_topic"
     NO_RELEVANT_CONTEXT = "no_relevant_context"
     AMBIGUOUS_RETRIEVAL = "ambiguous_retrieval"
+    GENERATION_INVALID_OUTPUT = "generation_invalid_output"
+    LATENCY_BUDGET_EXHAUSTED = "latency_budget_exhausted"
     UNGROUNDED_ANSWER = "ungrounded_answer"
     UPSTREAM_FAILURE = "upstream_failure"
+
+
+class InputSafetyCategory(StrEnum):
+    SAFE = "safe"
+    PROMPT_INJECTION = "prompt_injection"
+    HARMFUL = "harmful"
+    INAPPROPRIATE = "inappropriate"
+    INVALID = "invalid"
 
 
 class Chunk(StrictModel):
@@ -91,10 +102,27 @@ class RetrievalResult(StrictModel):
     total_ms: float = Field(ge=0)
 
 
+class InputSafetyAssessment(StrictModel):
+    is_safe: bool
+    category: InputSafetyCategory
+    matched_rule: str | None = None
+    reason: str = Field(min_length=1)
+    latency_ms: float = Field(ge=0)
+
+
+class ChunkRelevanceAssessment(StrictModel):
+    chunk_id: str = Field(min_length=1)
+    classification: RelevanceClassification
+    full_score: float
+    query_token_coverage: float = Field(ge=0, le=1)
+    reason: str = Field(min_length=1)
+
+
 class RelevanceAssessment(StrictModel):
     classification: RelevanceClassification
     confidence: float = Field(ge=0, le=1)
     accepted_chunk_ids: list[str] = Field(default_factory=list)
+    chunk_assessments: list[ChunkRelevanceAssessment] = Field(default_factory=list)
     reason: str = Field(min_length=1)
     latency_ms: float = Field(ge=0)
 
@@ -104,6 +132,8 @@ class GroundednessAssessment(StrictModel):
     score: float = Field(ge=0, le=1)
     supporting_chunk_ids: list[str] = Field(default_factory=list)
     unsupported_claims: list[str] = Field(default_factory=list)
+    method: str = Field(default="lexical_citation", min_length=1)
+    judge_used: bool = False
     reason: str = Field(min_length=1)
     latency_ms: float = Field(ge=0)
 
@@ -112,6 +142,7 @@ class GenerationRequest(StrictModel):
     query: str = Field(min_length=1, max_length=2_000)
     context: list[RetrievedChunk] = Field(min_length=1)
     language_code: str | None = Field(default=None, min_length=2, max_length=32)
+    latency_budget_ms: float | None = Field(default=None, ge=0)
 
 
 class GenerationResult(StrictModel):
@@ -141,6 +172,10 @@ class TranscriptionResult(StrictModel):
 
 class StageLatencies(StrictModel):
     stt_ms: float | None = Field(default=None, ge=0)
+    input_safety_ms: float | None = Field(default=None, ge=0)
+    query_embedding_ms: float | None = Field(default=None, ge=0)
+    retrieval_stage_1_ms: float | None = Field(default=None, ge=0)
+    retrieval_stage_2_ms: float | None = Field(default=None, ge=0)
     retrieval_ms: float | None = Field(default=None, ge=0)
     relevance_ms: float | None = Field(default=None, ge=0)
     generation_ms: float | None = Field(default=None, ge=0)
@@ -170,6 +205,7 @@ class RAGResponse(StrictModel):
     status: ResponseStatus
     answer: str | None = None
     refusal_reason: RefusalReason | None = None
+    input_safety: InputSafetyAssessment | None = None
     retrieved_chunks: list[RetrievedChunk] = Field(default_factory=list)
     relevance: RelevanceAssessment | None = None
     groundedness: GroundednessAssessment | None = None
@@ -213,8 +249,8 @@ class HealthResponse(StrictModel):
     implementation_phase: str
     rag_ready: bool = False
     voice_ready: bool = False
-    stt_provider: str = "elevenlabs"
-    answer_mode: str = "local_extractive"
+    stt_provider: str = "sarvam"
+    answer_mode: str = "hybrid_extractive_budgeted_groq_grounded"
     vector_count: int = Field(default=0, ge=0)
     supported_languages: list[str] = Field(default_factory=list)
     latency_target_ms: float = Field(default=200.0, gt=0)
@@ -224,3 +260,6 @@ class ErrorResponse(StrictModel):
     error_code: str = Field(min_length=1)
     message: str = Field(min_length=1)
     retryable: bool
+    request_id: str | None = None
+    stage: str | None = None
+    latencies: StageLatencies | None = None

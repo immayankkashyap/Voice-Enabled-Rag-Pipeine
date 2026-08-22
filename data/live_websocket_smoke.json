@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "measured_at_utc": "2026-08-22T13:57:30.744986+00:00",
+  "benchmark": "live_websocket_voice_rag",
+  "metric_definition": "Client-observed first_audio_to_client_answer_ms starts immediately before the first binary WebSocket send. end_sent_to_client_answer_ms starts after the end control send completes. Both stop after the answer frame is received, JSON-decoded, schema-validated, checked against the committed transcript, and quality-oracle validated. Connection/start/ready setup, microphone capture, and browser rendering are excluded. Client-to-ASGI transport, the server and provider path, response serialization, final WebSocket receipt, and client parsing/validation are included.",
+  "scope": {
+    "runner": "external_websocket_client",
+    "connection_start_and_ready_included": false,
+    "client_to_asgi_transport_included": true,
+    "final_websocket_receipt_included": true,
+    "answer_json_and_schema_validation_included": true,
+    "answer_oracle_validation_included": true,
+    "microphone_capture_included": false,
+    "browser_rendering_included": false,
+    "p100_policy": "Literal maximum completed observation.",
+    "failure_policy": "Failures remain explicit SLA and quality violations; they are never dropped from all-attempt gates."
+  },
+  "endpoint": {
+    "websocket_url": "wss://photography-permanent-practices-components.trycloudflare.com/ws/voice-rag",
+    "origin": "https://photography-permanent-practices-components.trycloudflare.com",
+    "authentication": "VOICE_DEMO_TOKEN environment only; value omitted"
+  },
+  "configuration": {
+    "trials": 1,
+    "chunk_ms": 100,
+    "max_frame_bytes": 16000,
+    "realtime_pacing": true,
+    "language_code": "hi",
+    "target_ms": 200.0,
+    "target_anchor": "end_sent_to_client_answer_ms",
+    "input_mode": "positional_smoke",
+    "benchmark_mode": "latency_only_non_submission_smoke"
+  },
+  "audio": {
+    "source_count": 1,
+    "distinct_recordings": 1,
+    "distinct_recordings_basis": "Full SHA-256 of decoded PCM sample bytes among attempted trials; header-only differences cannot create diversity and digests are used in memory and never persisted.",
+    "sources": [
+      {
+        "file": "stt_sample.wav",
+        "sample_rate_hz": 16000,
+        "channels": 1,
+        "sample_width_bits": 16,
+        "frame_count": 72582,
+        "duration_ms": 4536.375,
+        "source_id": "audio-001"
+      }
+    ],
+    "assignment": "deterministic_round_robin"
+  },
+  "outcomes": {
+    "attempted": 1,
+    "completed": 1,
+    "failed": 0,
+    "answered": 0,
+    "refused": 1,
+    "sla_met": 0,
+    "sla_violations": 1,
+    "all_attempts_meet_post_utterance_target": false,
+    "first_audio_target_met": 0
+  },
+  "quality": {
+    "gate_enabled": false,
+    "eligible_trials": 0,
+    "outcome_oracle_eligible_trials": 0,
+    "quality_violations": 1,
+    "manifest_supplied": false,
+    "referenced_trials": 0,
+    "unique_normalized_reference_questions": 0,
+    "all_attempts_eligible": false,
+    "rule": "Every trial must match its normalized transcript reference and expected outcome. Answers must be grounded and match every configured answer/source oracle; explicitly expected refusals may pass."
+  },
+  "gates": {
+    "latency_sla_met": false,
+    "quality_gate_met": false,
+    "quality_gate_enabled": false,
+    "benchmark_passed": false,
+    "workload_submission_ready": false,
+    "minimum_trial_count_met": false,
+    "minimum_content_distinct_recordings_met": false,
+    "minimum_unique_normalized_reference_questions_met": false,
+    "secure_transport_met": true,
+    "live_submission_evidence_eligible": false,
+    "live_submission_p100_validated": false
+  },
+  "latency_ms": {
+    "full_voice": {
+      "first_audio_to_client_answer": {
+        "samples": 1,
+        "missing_completed_samples": 0,
+        "failed_trials": 0,
+        "mean": 5024.794958997518,
+        "p50": 5024.794958997518,
+        "p70": 5024.794958997518,
+        "p100": 5024.794958997518,
+        "p100_is_observed_max": true,
+        "all_attempts_meet_target": false
+      },
+      "end_sent_to_client_answer": {
+        "samples": 1,
+        "missing_completed_samples": 0,
+        "failed_trials": 0,
+        "mean": 523.2867920421995,
+        "p50": 523.2867920421995,
+        "p70": 523.2867920421995,
+        "p100": 523.2867920421995,
+        "p100_is_observed_max": true,
+        "all_attempts_meet_target": false
+      }
+    },
+    "stage_observations": {
+      "first_audio_to_first_partial": {
+        "samples": 1,
+        "missing_completed_samples": 0,
+        "failed_trials": 0,
+        "mean": 4501.608583959751,
+        "p50": 4501.608583959751,
+        "p70": 4501.608583959751,
+        "p100": 4501.608583959751,
+        "p100_is_observed_max": true
+      },
+      "first_audio_to_committed_receipt": {
+        "samples": 1,
+        "missing_completed_samples": 0,
+        "failed_trials": 0,
+        "mean": 4901.516042009462,
+        "p50": 4901.516042009462,
+        "p70": 4901.516042009462,
+        "p100": 4901.516042009462,
+        "p100_is_observed_max": true
+      },
+      "end_sent_to_committed_receipt": {
+        "samples": 1,
+        "missing_completed_samples": 0,
+        "failed_trials": 0,
+        "mean": 400.00787505414337,
+        "p50": 400.00787505414337,
+        "p70": 400.00787505414337,
+        "p100": 400.00787505414337,
+        "p100_is_observed_max": true
+      },
+      "client_stream_send_span": {
+        "samples": 1,
+        "missing_completed_samples": 0,
+        "failed_trials": 0,
+        "mean": 4501.508166955318,
+        "p50": 4501.508166955318,
+        "p70": 4501.508166955318,
+        "p100": 4501.508166955318,
+        "p100_is_observed_max": true
+      },
+      "server_reported_first_audio_to_answer": {
+        "samples": 1,
+        "missing_completed_samples": 0,
+        "failed_trials": 0,
+        "mean": 4996.931708010379,
+        "p50": 4996.931708010379,
+        "p70": 4996.931708010379,
+        "p100": 4996.931708010379,
+        "p100_is_observed_max": true
+      },
+      "server_reported_audio_eof_to_answer": {
+        "samples": 1,
+        "missing_completed_samples": 0,
+        "failed_trials": 0,
+        "mean": 500.95745804719627,
+        "p50": 500.95745804719627,
+        "p70": 500.95745804719627,
+        "p100": 500.95745804719627,
+        "p100_is_observed_max": true
+      }
+    }
+  },
+  "reference_quality": null,
+  "trials": [
+    {
+      "trial": 1,
+      "outcome": "completed",
+      "source_id": "audio-001",
+      "source_file": "stt_sample.wav",
+      "reference": null,
+      "transcript": "हम्म, व्हाट इज द कैपिटल ऑफ इंडिया? एन, अह, हाउ मेनी पीपल लिव देयर?",
+      "transcription_available": true,
+      "stt_provider": "sarvam",
+      "stt_model": "saaras:v3-realtime",
+      "rag_status": "refused",
+      "refusal_reason": "no_relevant_context",
+      "grounded": false,
+      "quality": {
+        "expected_status": "answered",
+        "expected_refusal_reason": null,
+        "actual_status": "refused",
+        "actual_refusal_reason": "no_relevant_context",
+        "status_match": false,
+        "refusal_reason_match": true,
+        "answered_and_grounded": false,
+        "answer_oracle_configured": false,
+        "expected_answer_contains": [],
+        "answer_contains_match": null,
+        "expected_chunk_ids": [],
+        "supporting_chunk_ids_match": null,
+        "expected_document_ids": [],
+        "supporting_document_ids_match": null,
+        "answer_oracle_match": false,
+        "reference_required": false,
+        "reference_strict_match": null,
+        "reference_normalized_match": null,
+        "eligible": false
+      },
+      "partial_count": 25,
+      "sla_met": false,
+      "post_utterance_target_met": false,
+      "first_audio_target_met": false,
+      "latency_ms": {
+        "first_audio_to_first_partial": 4501.608583959751,
+        "first_audio_to_committed_receipt": 4901.516042009462,
+        "end_sent_to_committed_receipt": 400.00787505414337,
+        "first_audio_to_client_answer": 5024.794958997518,
+        "end_sent_to_client_answer": 523.2867920421995,
+        "client_stream_send_span": 4501.508166955318,
+        "server_reported_first_audio_to_answer": 4996.931708010379,
+        "server_reported_audio_eof_to_answer": 500.95745804719627
+      }
+    }
+  ]
+}

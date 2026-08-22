@@ -10,11 +10,11 @@ from unittest.mock import AsyncMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.elevenlabs_stt import ElevenLabsQuotaError
 from app.generation import GroqAnswerGenerator
 from app.main import VoiceAccessSettings, _VoiceRateLimiter, app, lifespan
 from app.runtime import RuntimeSettings
 from app.schemas import (
+    ErrorResponse,
     GroundednessAssessment,
     RAGRequest,
     RAGResponse,
@@ -22,6 +22,7 @@ from app.schemas import (
     StageLatencies,
     TranscriptionResult,
 )
+from app.stt import SarvamSTTError
 
 
 class _FakeLocalPipeline:
@@ -45,12 +46,45 @@ class _FakeLocalPipeline:
                 latency_ms=0.01,
             ),
             latencies=StageLatencies(
+                stt_ms=0.0,
+                input_safety_ms=0.0,
+                query_embedding_ms=0.08,
+                retrieval_stage_1_ms=0.01,
+                retrieval_stage_2_ms=0.01,
                 retrieval_ms=0.10,
                 relevance_ms=0.01,
                 generation_ms=0.01,
                 groundedness_ms=0.01,
                 total_ms=0.13,
                 target_ms=self.latency_target_ms,
+                target_met=True,
+            ),
+        )
+
+
+class _FailingGenerationPipeline:
+    latency_target_ms = 200.0
+
+    async def answer(self, request: RAGRequest) -> ErrorResponse:
+        return ErrorResponse(
+            error_code="rag_generation_failed",
+            message="The answer-generation provider failed.",
+            retryable=True,
+            request_id="fake-error",
+            stage="generation",
+            latencies=StageLatencies(
+                stt_ms=0.0,
+                input_safety_ms=0.01,
+                query_embedding_ms=1.0,
+                retrieval_stage_1_ms=0.1,
+                retrieval_stage_2_ms=0.1,
+                retrieval_ms=1.3,
+                relevance_ms=0.01,
+                generation_ms=2.0,
+                groundedness_ms=0.0,
+                output_ms=0.0,
+                total_ms=3.32,
+                target_ms=200.0,
                 target_met=True,
             ),
         )
@@ -96,8 +130,8 @@ class _FakeStreamingSTT:
             await asyncio.sleep(0)
         audio_duration_ms = sum(map(len, self.received_audio)) / 32.0
         return TranscriptionResult(
-            provider="elevenlabs",
-            model="scribe_v2_realtime",
+            provider="sarvam",
+            model="saaras:v3-realtime",
             transcript=self.committed_transcript,
             language_code="eng",
             is_final=True,
@@ -115,7 +149,7 @@ class _FakeStreamingSTT:
 class _FailingStreamingSTT(_FakeStreamingSTT):
     async def transcribe(self, audio_chunks, **kwargs) -> TranscriptionResult:
         del audio_chunks, kwargs
-        raise ElevenLabsQuotaError("The included quota is exhausted")
+        raise SarvamSTTError("The provider is unavailable")
 
 
 class LifespanResourceTests(unittest.IsolatedAsyncioTestCase):
@@ -125,14 +159,14 @@ class LifespanResourceTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.dict(
                 "app.main.os.environ",
-                {"ELEVENLABS_API_KEY": "test-key"},
+                {"SARVAM_API_KEY": "test-key"},
                 clear=False,
             ),
             patch(
                 "app.main.RuntimeSettings.from_environment",
                 return_value=RuntimeSettings(preload=False),
             ),
-            patch("app.main.ElevenLabsStreamingSTT") as stt_constructor,
+            patch("app.main.SarvamStreamingSTT") as stt_constructor,
         ):
             async with lifespan(application):
                 self.assertIsNone(application.state.voice_error)
@@ -177,7 +211,7 @@ class MainHarnessTests(unittest.TestCase):
             pipeline=self.pipeline,
             vector_count=1,
         )
-        app.state.stt_clients = {"eng": self.stt}
+        app.state.stt_clients = {"en-IN": self.stt}
         app.state.voice_error = None
         app.state.voice_access_settings = VoiceAccessSettings(
             demo_token=self.DEMO_TOKEN,
@@ -232,6 +266,21 @@ class MainHarnessTests(unittest.TestCase):
         paid_generate.assert_not_awaited()
         runtime_loader.assert_not_awaited()
 
+    def test_generation_failure_is_a_sanitized_http_error(self) -> None:
+        app.state.runtime = SimpleNamespace(
+            pipeline=_FailingGenerationPipeline(),
+            vector_count=1,
+        )
+
+        response = self.client.post("/rag", json={"query": "What is RAG?"})
+
+        self.assertEqual(response.status_code, 502)
+        payload = response.json()
+        self.assertEqual(payload["error_code"], "rag_generation_failed")
+        self.assertEqual(payload["stage"], "generation")
+        self.assertTrue(payload["retryable"])
+        self.assertEqual(payload["latencies"]["generation_ms"], 2.0)
+
     def test_voice_start_binary_end_emits_partial_committed_and_answer(self) -> None:
         frame = b"\x01\x00" * 320
         with (
@@ -262,7 +311,7 @@ class MainHarnessTests(unittest.TestCase):
         self.assertEqual(partial, {"event": "partial_transcript", "text": "What is"})
         self.assertEqual(committed["event"], "committed_transcript")
         self.assertTrue(committed["payload"]["is_final"])
-        self.assertEqual(committed["payload"]["provider"], "elevenlabs")
+        self.assertEqual(committed["payload"]["provider"], "sarvam")
         self.assertEqual(committed["payload"]["time_to_final_transcript_ms"], 777.0)
         self.assertEqual(committed["payload"]["final_after_audio_end_ms"], 555.0)
         self.assertEqual(answer["event"], "answer")
@@ -271,7 +320,7 @@ class MainHarnessTests(unittest.TestCase):
         )
         self.assertEqual(answer["payload"]["rag"]["status"], "answered")
         self.assertEqual(self.stt.received_audio, [frame])
-        self.assertEqual(self.stt.origins, ["https://demo.example"])
+        self.assertEqual(self.stt.origins, [None])
         self.assertEqual(self.pipeline.requests[0].language_code, "en")
         self.assertEqual(
             [request.query for request in self.pipeline.requests],
@@ -301,12 +350,12 @@ class MainHarnessTests(unittest.TestCase):
         paid_generate.assert_not_awaited()
         runtime_loader.assert_not_awaited()
 
-    def test_revised_commit_discards_settled_preparation(self) -> None:
+    def test_only_committed_transcript_reaches_rag(self) -> None:
         self.stt = _FakeStreamingSTT(
             settled_transcript="What is a graph?",
             committed_transcript="What is RAG?",
         )
-        app.state.stt_clients = {"eng": self.stt}
+        app.state.stt_clients = {"en-IN": self.stt}
         with (
             patch.object(
                 GroqAnswerGenerator,
@@ -329,7 +378,7 @@ class MainHarnessTests(unittest.TestCase):
         self.assertEqual(answer["payload"]["rag"]["query"], "What is RAG?")
         self.assertEqual(
             [request.query for request in self.pipeline.requests],
-            ["What is a graph?", "What is RAG?"],
+            ["What is RAG?"],
         )
         paid_generate.assert_not_awaited()
 
@@ -339,7 +388,7 @@ class MainHarnessTests(unittest.TestCase):
             websocket.send_text(f'{{"event":"start","value":"{secret_marker}"')
             error = websocket.receive_json()
 
-        self.assertEqual(error["error_code"], "voice_pipeline_refused")
+        self.assertEqual(error["error_code"], "invalid_voice_input")
         self.assertEqual(
             error["message"],
             "Invalid voice WebSocket protocol input.",
@@ -356,22 +405,22 @@ class MainHarnessTests(unittest.TestCase):
             websocket.send_json(self.start_payload())
             error = websocket.receive_json()
 
-        self.assertEqual(error["error_code"], "voice_pipeline_refused")
+        self.assertEqual(error["error_code"], "invalid_voice_input")
         self.assertEqual(self.stt.received_audio, [])
         self.assertEqual(self.stt.origins, [])
         self.assertEqual(self.pipeline.requests, [])
 
     def test_provider_failure_is_observed_without_filling_audio_queue(self) -> None:
         failing_stt = _FailingStreamingSTT()
-        app.state.stt_clients = {"eng": failing_stt}
+        app.state.stt_clients = {"en-IN": failing_stt}
         with self.client.websocket_connect("/ws/voice-rag") as websocket:
             websocket.send_json(self.start_payload())
             self.assertEqual(websocket.receive_json()["event"], "ready")
             websocket.send_bytes(b"\x01\x00" * 160)
             error = websocket.receive_json()
 
-        self.assertEqual(error["error_code"], "voice_pipeline_refused")
-        self.assertIn("quota", error["message"].lower())
+        self.assertEqual(error["error_code"], "stt_failed")
+        self.assertEqual(error["stage"], "stt")
 
     def test_missing_and_wrong_demo_token_never_start_stt(self) -> None:
         for supplied in (None, "wrong-secret-should-not-be-reflected"):
@@ -392,7 +441,7 @@ class MainHarnessTests(unittest.TestCase):
                     websocket.send_json(payload)
                     error = websocket.receive_json()
 
-                self.assertEqual(error["error_code"], "voice_pipeline_refused")
+                self.assertEqual(error["error_code"], "invalid_voice_input")
                 self.assertNotIn(str(supplied), json.dumps(error))
                 stt_factory.assert_not_awaited()
                 self.assertEqual(self.stt.transcribe_calls, 0)
@@ -410,7 +459,7 @@ class MainHarnessTests(unittest.TestCase):
             websocket.send_json(self.start_payload())
             error = websocket.receive_json()
 
-        self.assertEqual(error["error_code"], "voice_pipeline_refused")
+        self.assertEqual(error["error_code"], "invalid_voice_input")
         stt_factory.assert_not_awaited()
         self.assertEqual(self.stt.transcribe_calls, 0)
 
@@ -430,7 +479,7 @@ class MainHarnessTests(unittest.TestCase):
             websocket.send_bytes(b"\x01\x00" * 3)
             error = websocket.receive_json()
 
-        self.assertEqual(error["error_code"], "voice_pipeline_refused")
+        self.assertEqual(error["error_code"], "invalid_voice_input")
         stt_factory.assert_not_awaited()
         self.assertEqual(self.stt.transcribe_calls, 0)
         self.assertEqual(self.stt.received_audio, [])
@@ -451,7 +500,7 @@ class MainHarnessTests(unittest.TestCase):
             if error.get("event") == "partial_transcript":
                 error = websocket.receive_json()
 
-        self.assertEqual(error["error_code"], "voice_pipeline_refused")
+        self.assertEqual(error["error_code"], "invalid_voice_input")
         self.assertNotIn(b"\x02\x00" * 3, self.stt.received_audio)
 
 

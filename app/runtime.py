@@ -1,4 +1,4 @@
-"""Warm, reusable local services for the no-paid-generation demo path."""
+"""Warm, reusable retrieval and budgeted-generation runtime services."""
 
 from __future__ import annotations
 
@@ -6,11 +6,15 @@ import asyncio
 import json
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .chunking import JinaEmbeddingModel
-from .extractive import ExtractiveAnswerGenerator
+from .generation import (
+    GroqAnswerGenerator,
+    GroqGenerationSettings,
+    HybridAnswerGenerator,
+)
 from .indexing import FaissVectorStore
 from .pipeline import FastRAGPipeline
 from .retrieval import TwoStageRetriever
@@ -30,12 +34,25 @@ class RuntimeSettings:
     cpu_threads: int = 2
     preload: bool = True
     latency_target_ms: float = 200.0
+    groq_api_key: str = field(default="", repr=False)
+    generation_model: str = "qwen/qwen3.6-27b"
+    generation_max_output_tokens: int = 96
+    generation_max_attempts: int = 2
+    generation_min_fallback_budget_ms: float = 350.0
 
     def __post_init__(self) -> None:
         if self.latency_target_ms <= 0:
             raise ValueError("latency_target_ms must be positive")
         if not 1 <= self.cpu_threads <= 64:
             raise ValueError("cpu_threads must be between 1 and 64")
+        if not self.generation_model:
+            raise ValueError("generation_model cannot be empty")
+        if self.generation_max_output_tokens <= 0:
+            raise ValueError("generation_max_output_tokens must be positive")
+        if self.generation_max_attempts <= 0:
+            raise ValueError("generation_max_attempts must be positive")
+        if self.generation_min_fallback_budget_ms < 0:
+            raise ValueError("generation_min_fallback_budget_ms must be non-negative")
 
     @classmethod
     def from_environment(cls) -> RuntimeSettings:
@@ -54,6 +71,18 @@ class RuntimeSettings:
             cpu_threads=int(os.getenv("RAG_CPU_THREADS", "2")),
             preload=preload,
             latency_target_ms=float(os.getenv("RAG_LATENCY_TARGET_MS", "200")),
+            groq_api_key=os.getenv("GROQ_API_KEY", ""),
+            generation_model=os.getenv(
+                "GROQ_MODEL",
+                "qwen/qwen3.6-27b",
+            ),
+            generation_max_output_tokens=int(
+                os.getenv("GROQ_MAX_OUTPUT_TOKENS", "96")
+            ),
+            generation_max_attempts=int(os.getenv("GROQ_MAX_ATTEMPTS", "2")),
+            generation_min_fallback_budget_ms=float(
+                os.getenv("GROQ_MIN_FALLBACK_BUDGET_MS", "350")
+            ),
         )
 
 
@@ -66,6 +95,13 @@ class RuntimeServices:
     device: str
     load_ms: float
     warmup_ms: float
+    answer_mode: str
+
+    async def aclose(self) -> None:
+        generator = self.pipeline.generator
+        close = getattr(generator, "aclose", None)
+        if close is not None:
+            await close()
 
 
 def _warmup_query(index_dir: Path) -> str:
@@ -120,9 +156,26 @@ async def load_runtime(settings: RuntimeSettings) -> RuntimeServices:
     store = await asyncio.to_thread(FaissVectorStore.load, settings.index_dir)
     _validate_encoder_provenance(store, encoder)
     retriever = TwoStageRetriever(store, encoder)
+    if not settings.groq_api_key:
+        raise RuntimeLoadError("GROQ_API_KEY is required for the generation stage")
+    groq_generator = GroqAnswerGenerator(
+        GroqGenerationSettings(
+            api_key=settings.groq_api_key,
+            model=settings.generation_model,
+            max_output_tokens=settings.generation_max_output_tokens,
+            max_attempts=settings.generation_max_attempts,
+            reasoning_effort=(
+                "low" if settings.generation_model.startswith("openai/gpt-oss-") else None
+            ),
+        )
+    )
+    generator = HybridAnswerGenerator(
+        groq_generator,
+        min_fallback_budget_ms=settings.generation_min_fallback_budget_ms,
+    )
     pipeline = FastRAGPipeline(
         retriever=retriever,
-        generator=ExtractiveAnswerGenerator(),
+        generator=generator,
         latency_target_ms=settings.latency_target_ms,
     )
     load_ms = (time.perf_counter() - started) * 1000
@@ -152,4 +205,5 @@ async def load_runtime(settings: RuntimeSettings) -> RuntimeServices:
         device=encoder.device,
         load_ms=load_ms,
         warmup_ms=warmup_ms,
+        answer_mode=generator.answer_mode,
     )

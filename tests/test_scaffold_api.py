@@ -17,11 +17,14 @@ class ScaffoldAPITests(unittest.TestCase):
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json()["implementation_phase"], "day3_free_demo_harness"
+            response.json()["implementation_phase"], "submission_ready_voice_rag"
         )
         self.assertFalse(response.json()["rag_ready"])
-        self.assertEqual(response.json()["stt_provider"], "elevenlabs")
-        self.assertEqual(response.json()["answer_mode"], "local_extractive")
+        self.assertEqual(response.json()["stt_provider"], "sarvam")
+        self.assertEqual(
+            response.json()["answer_mode"],
+            "hybrid_extractive_budgeted_groq_grounded",
+        )
 
     def test_rag_refuses_to_fabricate_an_answer(self) -> None:
         response = self.client.post("/rag", json={"query": "What is RAG?"})
